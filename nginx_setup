@@ -12,7 +12,7 @@
 
     location /static/ {
         autoindex on;
-        alias /home/$project/$project/static/static_root/;
+        alias /var/www/$project/$project/static/static_root/;
     }
 
   }
