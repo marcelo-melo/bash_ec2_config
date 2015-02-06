@@ -1,0 +1,116 @@
+#!/bin/bash
+
+# How to Install:
+# sudo curl -o /tmp/start_instance http://www.webtask.com.br/configs/start_instance && source /tmp/start_instance
+#
+
+#python 2.7
+echo "$(tput setaf 1)$(tput setab 7) Installing Python $(tput sgr 0)"
+PYV=`python -c "import sys;t='{v[0]}.{v[1]}'.format(v=list(sys.version_info[:2]));sys.stdout.write(t)";`
+
+if [ $(echo "$PYV == 2.7" | bc) -ne 0 ]
+then
+  echo "Python 2.7 is installed"
+else
+  sudo yum install make automake gcc gcc-c++ kernel-devel git-core -y
+  sudo yum install python27-devel -y
+  sudo rm /usr/bin/python
+  sudo ln -s /usr/bin/python2.7 /usr/bin/python
+  sudo cp /usr/bin/yum /usr/bin/_yum_before_27
+  sudo sed -i s/python/python2.6/g /usr/bin/yum
+  sudo sed -i s/python2.6/python2.6/g /usr/bin/yum
+fi
+
+#pip + virtualenv
+echo "$(tput setaf 1)$(tput setab 7) Installing Pip $(tput sgr 0)"
+sudo curl -o /tmp/ez_setup.py https://bootstrap.pypa.io/get-pip.py 
+sudo /usr/bin/python27 /tmp/ez_setup.py 
+sudo /usr/bin/easy_install-2.7 pip
+
+echo "$(tput setaf 1)$(tput setab 7) Installing VirtualEnv $(tput sgr 0)"
+sudo pip install virtualenv
+
+# granted permission
+sudo mkdir -p /var/www/
+sudo chown -R ec2-user:root /var/www/
+
+echo "$(tput setaf 1)$(tput setab 7) Installing Django + Gunicorn $(tput sgr 0)"
+#virtualenv + django + gunicorn
+read -p "Whats the projects name? : " project_name
+read -p "Whats the domain? (no www!) : " domain_name
+
+if [ -e /var/www/$project_name ]
+then
+   echo 'Directory already exists'
+else
+   mkdir -p /var/www/$project_name
+fi
+
+cd /var/www/$project_name
+
+if [[ "$VIRTUAL_ENV" != "" ]]
+then
+  echo "Virtualenv is activated"
+else
+  virtualenv .
+  source bin/activate
+fi
+
+pip install gunicorn django
+
+if [ -e /var/www/$project_name/$project_name/ ]
+then
+   echo 'Django project already exists'
+else
+   django-admin.py startproject $project_name
+fi
+
+if [[ "$VIRTUAL_ENV" != "" ]]
+then
+  deactivate
+else
+  echo "Virtualenv is not activated"
+fi
+
+echo "$(tput setaf 1)$(tput setab 7) Installing nginx $(tput sgr 0)"
+#ngixn
+sudo yum install nginx
+sudo curl -o /tmp/nginx_setup http://www.webtask.com.br/configs/nginx_setup
+sudo sed 's/$project/'$project_name'/g' /tmp/nginx_setup > /tmp/nginx_setup_tmp1
+sudo sed 's/$domain/'$domain_name'/g' /tmp/nginx_setup_tmp1 > /tmp/nginx_setup_tmp2
+sudo cp /tmp/nginx_setup_tmp2 /etc/nginx/conf.d/virtual.conf
+sudo mkdir -p /home/$project_name/tmp/
+sudo rm /tmp/nginx_setup*
+
+
+#supervisor
+echo "$(tput setaf 1)$(tput setab 7) Installing Supervisor $(tput sgr 0)"
+cd /var/www/$project_name/$project_name
+
+if [[ "$VIRTUAL_ENV" != "" ]]
+then
+  echo "Virtualenv is activated"
+else
+  source ../bin/activate
+fi
+
+pip install supervisor
+mkdir /var/www/$project_name/tmp/
+sudo curl -o /tmp/supervisor_setup http://www.webtask.com.br/configs/supervisor_setup
+sudo sed 's/$project/'$project_name'/g' /tmp/supervisor_setup > /tmp/supervisor_setup_tmp1
+sudo cp /tmp/supervisor_setup_tmp1 /var/www/$project_name/$project_name/supervisord.conf
+
+cd /var/www/$project_name/$project_name/
+echo "$(tput setaf 1)$(tput setab 7) Start Server $(tput sgr 0)"
+supervisord
+
+if [[ "$VIRTUAL_ENV" != "" ]]
+then
+  deactivate
+else
+  echo "Virtualenv is not activated"
+fi
+
+sudo /etc/init.d/nginx start
+
+echo "$(tput setaf 1)$(tput setab 7) Congratulations! Your server should be running now! $(tput sgr 0)"
